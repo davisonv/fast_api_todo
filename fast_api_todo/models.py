@@ -10,4 +10,4 @@ class Task:
     id: Mapped[int] = mapped_column(init=False, primary_key=True)
     title: Mapped[str]
     description: Mapped[str]
-    completed: Mapped[bool] = mapped_column(init=False)
+    completed: Mapped[bool]
