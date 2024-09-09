@@ -12,6 +12,7 @@ RUN pip install poetry
 
 RUN poetry config installer.max-workers 10
 RUN poetry install --no-root
+RUN task test
 
 
 EXPOSE 8000

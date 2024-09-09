@@ -20,6 +20,16 @@ services:
       - fastapi_database
     environment:
       DATABASE_URL: postgresql+psycopg://app_user:app_password@fastapi_database:5432/app_db
+      REDIS_URL: redis://localhost:6379
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
 
 volumes:
   pgdata:
+  redis-data:

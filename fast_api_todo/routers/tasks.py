@@ -1,15 +1,26 @@
+import json
+from dataclasses import asdict
 from http import HTTPStatus
 from typing import Annotated
 
+import redis
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from fast_api_todo.database import get_session
 from fast_api_todo.models import Task
-from fast_api_todo.schemas import TaskPublic, TaskSchema, TaskComplete, TaskUpdate, TaskList, Message
+from fast_api_todo.schemas import (
+    TaskComplete,
+    TaskList,
+    TaskPublic,
+    TaskSchema,
+    TaskUpdate,
+)
 
 router = APIRouter(prefix='/tasks', tags=['tasks'])
+
+rd = redis.Redis(host='redis', port=6379, db=0)
 
 Session = Annotated[Session, Depends(get_session)]
 
@@ -68,29 +79,45 @@ def patch_task(task_id: int, session: Session, task: TaskComplete):
 
 @router.get('/{task_id}', response_model=TaskPublic)
 def get_task(task_id: int, session: Session):
-    db_task = session.scalar(select(Task).where(Task.id == task_id))
+    cache = rd.get(task_id)
+    if cache:
+        task = json.loads(cache)
+    else:
+        task = session.scalar(select(Task).where(Task.id == task_id))
 
-    if not db_task:
-        raise HTTPException(
-            status_code=HTTPStatus.NOT_FOUND, detail='Task not found.'
-        )
-    
-    return db_task
+        if not task:
+            raise HTTPException(
+                status_code=HTTPStatus.NOT_FOUND, detail='Task not found.'
+            )
+
+        rd.set(task_id, json.dumps(asdict(task)))
+        rd.expire(task_id, 60)
+
+    return task
 
 
 @router.get('/', response_model=TaskList)
 def list_tasks(session: Session):
+    cache = rd.get('tasks')
 
-    tasks = session.scalars(select(Task)).all()
+    print(cache)
 
-    return {"tasks": tasks}
+    if cache:
+        tasks = json.loads(cache)
+    else:
+        tasks = session.scalars(select(Task)).all()
+
+        tasks_dict = [asdict(task) for task in tasks]
+
+        rd.set('tasks', json.dumps(tasks_dict))
+        rd.expire(tasks, 90)
+
+    return {'tasks': tasks}
 
 
 @router.delete('/{task_id}', response_model=None, status_code=204)
 def delete_todo(task_id: int, session: Session):
-    task = session.scalar(
-        select(Task).where(Task.id == task_id)
-    )
+    task = session.scalar(select(Task).where(Task.id == task_id))
 
     if not task:
         raise HTTPException(
@@ -99,5 +126,3 @@ def delete_todo(task_id: int, session: Session):
 
     session.delete(task)
     session.commit()
-
-    return 
